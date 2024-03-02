@@ -9,32 +9,60 @@ async function run(screenWidth, screenHeight, row, col) {
     const positionX = (row * width)
     const positionY = (col * height)    
 
-    const browser = await puppeteer.launch({headless: false, args: [`--window-position=${positionX},${positionY}`, `--window-size=${width},${height}`]})
-    const selector = "#step2-form > div > div:nth-child(2) > div:nth-child(2) > div:nth-child(2) > div > div:nth-child(6) > div > li.calendar-day-cell:nth-child(3)"
+    foundTimeslot = false
 
-    try {
-        const page = await browser.newPage()
-        await page.setViewport({width: 1500, height: 1024})
+    while (!foundTimeslot) {
+        try {
+            const browser = await puppeteer.launch({
+                headless: false,
+                args: [
+                    `--window-position=${positionX},${positionY}`, 
+                    `--window-size=${width},${height}`
+                ]
+            })                
+            const page = await browser.newPage();
 
-        await page.goto("https://reserve.pokemon-cafe.jp/reserve/step1")
-        
-        // Select 2 from the dropdown
-        await page.waitForSelector('.select select')
-        await page.select('.select select', '2')
+            // Browse to the register page
+            await page.goto("https://reserve.pokemon-cafe.jp/reserve/step1", {waitUntil: 'networkidle0'})
 
-        // Click the date in the calendar
-        await page.waitForSelector(selector)
-        await page.click(selector)
+            // If there's no dropdown, then the page did not load properly
+            try {
+                await page.$('.select select')
+                await Promise.all([
+                    page.waitForNavigation({waitUntil: 'networkidle0'}),
+                    page.select('.select select', '2')
+                ])
+            } catch (error) {
+                console.log("No Number of Guests dropdown detected")
+                await browser.close()
+            }
 
-        // Click the "Next Step" button
-        await page.click('#submit_button')
+            const selector = "#step2-form > div > div:nth-child(2) > div:nth-child(2) > div:nth-child(2) > div > div:nth-child(6) > div > li.calendar-day-cell:nth-child(4)"
 
-        await page.waitForSelector('#time_table')
-        await page.click('#time_table a.post-link')
-    } 
-    
-    catch (error) {
-        browser.close()
+            try {
+                await page.$(selector)
+                await page.click(selector)
+                await Promise.all([
+                    page.waitForNavigation({waitUntil: 'networkidle0'}),
+                    page.click('#submit_button')                    
+                ])
+            } catch (error) {
+                console.log("No calendar detected")
+                await browser.close()
+            }
+
+            try {
+                await page.click('#time_table a.post-link')
+                foundTimeslot = true
+                console.log("Found a timeslot!")                
+            } catch (error) {
+                console.log("No time slot available (or wrong page)")
+                await browser.close()
+            }
+        } catch (error) {
+            console.log(error)
+            await browser.close()
+        }            
     }
 }
 
@@ -43,6 +71,6 @@ const screenHeight = 1440
 
 for (let row = 0; row < 3; row++) {
     for (let col = 0; col < 3; col++) {
-       run(screenWidth, screenHeight, row, col)
+        run(screenWidth, screenHeight, row, col)
     }
 }
